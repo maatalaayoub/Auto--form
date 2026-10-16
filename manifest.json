@@ -1,0 +1,46 @@
+{
+  "manifest_version": 3,
+  "name": "Ads Adblock",
+  "version": "1.0.0",
+  "description": "Ads blocker pro+",
+  "icons": {
+    "32": "adblock.png",
+    "48": "adblock.png"
+  },
+  "action": {
+    "default_title": "Ads Adblock",
+    "default_icon": {
+      "16": "adblock.png",
+      "32": "adblock.png",
+      "48": "adblock.png"
+    }
+  },
+  "permissions": [
+    "activeTab",
+    "scripting"
+  ],
+  "host_permissions": [
+    "https://*.cloud.microsoft/*",
+    "https://*.office.com/*",
+    "https://*.microsoft.com/*",
+    "https://*.office365.com/*",
+    "https://api.cerebras.ai/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "https://*.cloud.microsoft/*",
+        "https://*.office.com/*",
+        "https://*.microsoft.com/*",
+        "https://*.office365.com/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "background": {
+    "service_worker": "service-worker.js"
+  }
+}
