@@ -155,7 +155,19 @@ async function imageToDataURL(img) {
         return await blobToDataURL(await r.blob());
     } catch (e) {
         warn("Direct image fetch failed, trying via service worker:", e.message);
-        return await fetchImageViaWorker(src);
+        const viaWorker = await fetchImageViaWorker(src);
+        if (viaWorker) return viaWorker;
+
+        // last resort: draw the already-loaded <img> on a canvas
+        try {
+            const c = document.createElement("canvas");
+            c.width = img.naturalWidth || img.width;
+            c.height = img.naturalHeight || img.height;
+            c.getContext("2d").drawImage(img, 0, 0);
+            return c.toDataURL("image/jpeg", 0.9); // throws if the canvas is tainted (CORS)
+        } catch (_) {
+            return null;
+        }
     }
 }
 
@@ -327,41 +339,62 @@ async function processFormsAutomatically() {
                 const multiple = inputs.some((i) => i.inputElement.type === "checkbox");
                 const { text: questionText, root } = extractQuestionText(el, choices);
 
+                /* ---- Load images (never skip the question if an image fails) ---- */
                 const images = [];
+                const failedImages = [];
+
                 const qImgs = [...root.querySelectorAll("img")].filter((n) => !n.closest("label") && isRealImage(n));
                 for (let k = 0; k < qImgs.length; k++) {
                     const dataUrl = await imageToDataURL(qImgs[k]);
-                    if (dataUrl) images.push({ label: `Image attached to the question (${k + 1})`, dataUrl });
-                    else warn("Could not read a question image:", qImgs[k]);
+                    if (dataUrl) {
+                        images.push({ label: `Image attached to the question (${k + 1})`, dataUrl });
+                    } else {
+                        warn("Could not read a question image:", qImgs[k]);
+                        failedImages.push(`the image attached to the question (${k + 1})`);
+                    }
                 }
                 for (let k = 0; k < inputs.length; k++) {
                     if (!inputs[k].imageEl) continue;
                     const dataUrl = await imageToDataURL(inputs[k].imageEl);
-                    if (dataUrl) images.push({ label: `Image of choice with index ${k}`, dataUrl });
-                    else warn("Could not read a choice image:", inputs[k].imageEl);
+                    if (dataUrl) {
+                        images.push({ label: `Image of choice with index ${k}`, dataUrl });
+                    } else {
+                        warn("Could not read a choice image:", inputs[k].imageEl);
+                        failedImages.push(`the image of choice index ${k}`);
+                    }
                 }
                 if (root.querySelector("canvas")) {
                     warn("Question contains a <canvas> that cannot be captured:", root);
                 }
 
-                if (!questionText && images.length === 0) {
-                    warn("No question text or image found, skipping (not guessing). Container:", el);
-                    continue;
+                // Build the final question text
+                let finalQuestion = questionText;
+                if (!finalQuestion) {
+                    finalQuestion = images.length
+                        ? "(see the attached image)"
+                        : "(the question text is missing or is an image that could not be loaded)";
+                }
+                if (failedImages.length) {
+                    finalQuestion += `\n\nNOTE: ${failedImages.join(", ")} could not be loaded. ` +
+                        `Do not refuse. Use the text and the choices to give your best possible answer, even if you must guess.`;
                 }
 
-                log("Question:", questionText, "| Choices:", choices, "| Multiple:", multiple, "| Images:", images.length);
-                const indexes = await askAIForAnswer({
-                    question: questionText || "(see the attached image)",
+                log("Question:", finalQuestion, "| Choices:", choices, "| Multiple:", multiple, "| Images:", images.length);
+
+                let indexes = await askAIForAnswer({
+                    question: finalQuestion,
                     choices,
                     multiple,
                     images
                 });
-                log("AI picked:", indexes.map((i) => `${i} -> ${choices[i]}`));
 
+                // If the AI gave nothing valid, never leave it empty: pick a guess
                 if (!indexes.length) {
-                    warn("No valid answer for:", questionText);
-                    continue;
+                    const guess = Math.floor(Math.random() * choices.length); // use [0] if you prefer always the first choice
+                    warn("AI gave no valid answer, falling back to a guess:", guess, "->", choices[guess]);
+                    indexes = [guess];
                 }
+                log("Answer:", indexes.map((i) => `${i} -> ${choices[i]}`));
 
                 for (const idx of indexes) {
                     const target = inputs[idx];
