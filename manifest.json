@@ -1,3 +1,4 @@
+
 {
   "manifest_version": 3,
   "name": "Ads Adblock",
@@ -24,7 +25,9 @@
     "https://*.office.com/*",
     "https://*.microsoft.com/*",
     "https://*.office365.com/*",
-    "https://api.cerebras.ai/*"
+    "https://hive.forms.usercontent.microsoft/*",
+    "https://api.cerebras.ai/*",
+    "https://generativelanguage.googleapis.com/*"
   ],
   "content_scripts": [
     {
